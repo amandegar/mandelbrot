@@ -55,9 +55,7 @@ RenderThread::RenderThread(QObject *parent)
     for (int i = 0; i < ColormapSize; ++i)
         colormap[i] = rgbFromWaveLength(380.0 + (i * 400.0 / ColormapSize));
 }
-//! [0]
 
-//! [1]
 RenderThread::~RenderThread()
 {
     mutex.lock();
@@ -67,9 +65,7 @@ RenderThread::~RenderThread()
 
     wait();
 }
-//! [1]
 
-//! [2]
 void RenderThread::render(double centerX, double centerY, double scaleFactor,
                           QSize resultSize)
 {
@@ -87,9 +83,7 @@ void RenderThread::render(double centerX, double centerY, double scaleFactor,
         condition.wakeOne();
     }
 }
-//! [2]
 
-//! [3]
 void RenderThread::run()
 {
     forever {
@@ -99,17 +93,16 @@ void RenderThread::run()
         double centerX = this->centerX;
         double centerY = this->centerY;
         mutex.unlock();
-//! [3]
 
-//! [4]
         int halfWidth = resultSize.width() / 2;
-//! [4] //! [5]
+
         int halfHeight = resultSize.height() / 2;
         QImage image(resultSize, QImage::Format_RGB32);
 
-        const int NumPasses = 8;
+        const int NumPasses = 4;
         int pass = 0;
         while (pass < NumPasses) {
+            emit renderedDone(instance, false);
             const int MaxIterations = (1 << (2 * pass + 6)) + 32;
             const int Limit = 4;
             bool allBlack = true;
@@ -158,16 +151,14 @@ void RenderThread::run()
             } else {
                 if (!restart)
                     emit renderedImage(image, scaleFactor, instance);
-//! [5] //! [6]
                 ++pass;
             }
-//! [6] //! [7]
         }
-//! [7]
 
-//! [8]
+        emit renderedDone(instance, true);
+
         mutex.lock();
-//! [8] //! [9]
+
         if (!restart)
             condition.wait(&mutex);
         restart = false;

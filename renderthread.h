@@ -51,7 +51,6 @@ QT_BEGIN_NAMESPACE
 class QImage;
 QT_END_NAMESPACE
 
-//! [0]
 class RenderThread : public QThread
 {
     Q_OBJECT
@@ -65,6 +64,7 @@ public:
 
 signals:
     void renderedImage(const QImage &image, double scaleFactor, int instance);
+    void renderedDone(int instance, bool done);
 
 protected:
     void run();
@@ -87,6 +87,5 @@ private:
 //    enum { ColormapSize = 2048 };
     uint colormap[ColormapSize];
 };
-//! [0]
 
 #endif

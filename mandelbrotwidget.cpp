@@ -57,6 +57,9 @@ const int ScrollStep = 20;
 MandelbrotWidget::MandelbrotWidget(QWidget *parent)
     : QWidget(parent)
 {
+    rowMax=3;
+    colMax=3;
+
     //Amir
     QCoreApplication::arguments().at(QCoreApplication::arguments().indexOf("-type")+1);
     QStringList x = QCoreApplication::arguments();
@@ -69,8 +72,10 @@ MandelbrotWidget::MandelbrotWidget(QWidget *parent)
     qRegisterMetaType<QImage>("QImage");
     connect(&thread, SIGNAL(renderedImage(QImage,double,int)),
             this, SLOT(updatePixmap(QImage,double,int)));
+    connect(&thread, SIGNAL(renderedDone(int,bool)),
+            this, SLOT(renderDone(int,bool)));
 
-    setWindowTitle(tr("Mandelbrot"));
+    setWindowTitle(tr("Mandelbrot - Parallel Processing"));
 #ifndef QT_NO_CURSOR
     setCursor(Qt::CrossCursor);
 #endif
@@ -90,9 +95,12 @@ void MandelbrotWidget::paintEvent(QPaintEvent * /* event */)
         return;
     }
 
-    int rowMax=4, colMax=4, borderThreshold = 2; //Amir
+    int textWidth;
     QRectF screen;
     QRectF wholescreen = QRectF(0, 0, this->width(), this->height()); //Amir
+    QString textTrue = tr("Done.");
+    QString textFalse = tr("Processing...");
+    QFontMetrics metrics = painter.fontMetrics();
 
 
     for (int colCur=0; colCur< colMax; colCur++) //Amir
@@ -119,11 +127,27 @@ void MandelbrotWidget::paintEvent(QPaintEvent * /* event */)
             //        painter.drawPixmap(exposed, pixmap, exposed);
             painter.restore();
         }
+
+        if (renderingDone)
+            textWidth = metrics.width(textTrue);
+        else
+            textWidth = metrics.width(textFalse);
+
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(QColor(0, 0, 0, 127));
+        painter.drawRect(screen.x(),
+                         screen.y() + screen.height() -20,
+                         80,
+                         20);
+        painter.setPen(Qt::white);
+        painter.drawText(screen.x() + 3,
+                         screen.y() + screen.height() - 5,
+                         (renderingDone?textTrue:textFalse));
     }
     QString text = tr("Use mouse wheel or the '+' and '-' keys to zoom. "
                       "Press and hold left mouse button to scroll.");
-    QFontMetrics metrics = painter.fontMetrics();
-    int textWidth = metrics.width(text);
+//    QFontMetrics metrics = painter.fontMetrics();
+    textWidth = metrics.width(text);
 
     painter.setPen(Qt::NoPen);
     painter.setBrush(QColor(0, 0, 0, 127));
@@ -209,6 +233,12 @@ void MandelbrotWidget::updatePixmap(const QImage &image, double scaleFactor, int
     lastDragPos = QPoint();
     pixmapScale = scaleFactor;
     update();
+}
+
+void MandelbrotWidget::renderDone(int instance, bool done)
+{
+    renderingDone = done;
+//    update();
 }
 
 void MandelbrotWidget::zoom(double zoomFactor)

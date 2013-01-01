@@ -66,6 +66,7 @@ protected:
 
 private slots:
     void updatePixmap(const QImage &image, double scaleFactor, int instance);
+    void renderDone(int instance, bool state);
 
 private:
     void zoom(double zoomFactor);
@@ -79,6 +80,9 @@ private:
     double centerY;
     double pixmapScale;
     double curScale;
+    bool renderingDone;
+    int rowMax, colMax;
+    enum {borderThreshold = 2};
 };
 //! [0]
 
