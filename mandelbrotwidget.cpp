@@ -42,6 +42,11 @@
 #include <QtGui>
 
 #include <math.h>
+#include <ctype.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <iostream>
 
 #include "mandelbrotwidget.h"
 
@@ -54,11 +59,10 @@ const double ZoomInFactor = 0.8f;
 const double ZoomOutFactor = 1 / ZoomInFactor;
 const int ScrollStep = 20;
 
-MandelbrotWidget::MandelbrotWidget(QWidget *parent)
+MandelbrotWidget::MandelbrotWidget(int argc, char *argv[], QWidget *parent)
     : QWidget(parent)
 {
-    rowMax=4;
-    colMax=4;
+    this->processArguments(argc, argv);
 
     //Amir
     QCoreApplication::arguments().at(QCoreApplication::arguments().indexOf("-type")+1);
@@ -68,11 +72,12 @@ MandelbrotWidget::MandelbrotWidget(QWidget *parent)
     renderingDone = new bool[rowMax * colMax];
     renderingDoneLevel = new int[rowMax * colMax];
     pixmap  = new QPixmap[rowMax * colMax];
+
     threads = new RenderThread[rowMax * colMax];
     for (int i = 0; i < rowMax * colMax ; i++)
     {
         threads[i].setInstanceNumber(i);
-        threads[i].setNumberPasses(4);
+        threads[i].setNumberPasses(Passes);
         connect(threads+i, SIGNAL(renderedImage(QImage,double,int)),
                 this, SLOT(updatePixmap(QImage,double,int)));
         connect(threads+i, SIGNAL(renderedDone(int,bool,int)),
@@ -101,12 +106,6 @@ MandelbrotWidget::~MandelbrotWidget()
     delete [] renderingDoneLevel;
     delete [] pixmap;
     delete [] threads;
-
-    for (int i = 0; i < rowMax * colMax ; i++)
-    {
-        threads[i].quit();
-        threads[i].wait();
-    }
 }
 
 void MandelbrotWidget::paintEvent(QPaintEvent * /* event */)
@@ -133,7 +132,7 @@ void MandelbrotWidget::paintEvent(QPaintEvent * /* event */)
     for (int rowCur=0; rowCur< rowMax; rowCur++) //Amir
         for (int colCur=0; colCur< colMax; colCur++) //Amir
         {
-        pointCur = rowCur * rowMax + colCur;
+        pointCur = rowCur * colMax + colCur;
         screen = QRectF(colCur * this->width() / colMax, rowCur * this->height() / rowMax,
                         this->width() / colMax - borderThreshold , this->height() / rowMax - borderThreshold); //Amir
 
@@ -141,11 +140,11 @@ void MandelbrotWidget::paintEvent(QPaintEvent * /* event */)
             //        painter.drawPixmap(pixmapOffset, pixmap);
             painter.drawPixmap(screen, pixmap[pointCur], wholescreen); //Amir
         } else {
-            double scaleFactor = pixmapScale / curScale;
-            int newWidth = int(pixmap[pointCur].width() * scaleFactor);
-            int newHeight = int(pixmap[pointCur].height() * scaleFactor);
-            int newX = pixmapOffset.x() + (pixmap[pointCur].width() - newWidth) / 2;
-            int newY = pixmapOffset.y() + (pixmap[pointCur].height() - newHeight) / 2;
+//            double scaleFactor = pixmapScale / curScale;
+//            int newWidth = int(pixmap[pointCur].width() * scaleFactor);
+//            int newHeight = int(pixmap[pointCur].height() * scaleFactor);
+//            int newX = pixmapOffset.x() + (pixmap[pointCur].width() - newWidth) / 2;
+//            int newY = pixmapOffset.y() + (pixmap[pointCur].height() - newHeight) / 2;
 
             painter.save();
 //            painter.translate(newX, newY);
@@ -329,4 +328,50 @@ void MandelbrotWidget::speedCall(float _x, float _y, float _scale)
 
     for (int i = 0; i< rowMax * colMax ; i++)
         threads[i].render(centerX, centerY, curScale, size());
+}
+
+void MandelbrotWidget::processArguments(int argc, char *argv[])
+{
+    //Parameters row, col, pass, process(thread,mpi,gpu)
+    rowMax =2;
+    colMax =2;
+    Passes =4;
+    R_MODE = MODE_THREAD;
+
+    int c;
+    while((c = getopt(argc, argv, "r:c:p:t:h?")) != -1)
+    {
+        switch(c)
+        {
+        case 'r':
+            rowMax = atoi(optarg);
+            break;
+        case 'c':
+            colMax = atoi(optarg);
+            break;
+        case 'p':
+            Passes = atoi(optarg);
+            break;
+        case'm':
+            if (!strcmp(optarg,"thread"))
+                R_MODE = MODE_THREAD;
+            else if (!strcmp(optarg,"mpi"))
+                R_MODE = MODE_MPI;
+            else if (!strcmp(optarg,"gpu"))
+                R_MODE = MODE_GPU;
+            break;
+        case'?':
+        case'h':
+        default:
+            std::cout << "Mandelbrot parallel processing application(Version: 8 Jan 2013)" <<std::endl;
+            std::cout << "Expanded by Amir Hossein Mandegar<amandegar@computer.org>" <<std::endl;
+            std::cout << "Usage: mandelbrot [OPTION]"<<std::endl;
+            std::cout << " -r [NUMBER]   Number of instance in row(default=2)" <<std::endl;
+            std::cout << " -c [NUMBER]   Number of instance in column(default=2)" <<std::endl;
+            std::cout << " -p [NUMBER]   Number of mandelrot passes level(default=4)" <<std::endl;
+            std::cout << " -m [STRING]   Processing mod. thread(default), mpi, gpu" <<std::endl;
+            std::cout << std::endl;
+            exit(0);
+        }
+    }
 }

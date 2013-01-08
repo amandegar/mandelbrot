@@ -47,7 +47,7 @@
 int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
-    MandelbrotWidget widget;
+    MandelbrotWidget widget(argc, argv);
     widget.show();
     return app.exec();
 }

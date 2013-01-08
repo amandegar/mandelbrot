@@ -61,8 +61,7 @@ RenderThread::~RenderThread()
 {
     mutex.lock();
     abort = true;
-//    condition.wakeOne();
-    condition.wakeAll();
+    condition.wakeOne();
     mutex.unlock();
 
     wait();
@@ -82,8 +81,7 @@ void RenderThread::render(double centerX, double centerY, double scaleFactor,
         start(LowPriority);
     } else {
         restart = true;
-//        condition.wakeOne();
-        condition.wakeAll();
+        condition.wakeOne();
     }
 }
 

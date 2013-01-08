@@ -54,7 +54,7 @@ class MandelbrotWidget : public QWidget
     Q_OBJECT
 
 public:
-    MandelbrotWidget(QWidget *parent = 0);
+    MandelbrotWidget(int argc, char *argv[], QWidget *parent = 0);
     ~MandelbrotWidget();
 
 protected:
@@ -74,6 +74,7 @@ private:
     void zoom(double zoomFactor);
     void scroll(int deltaX, int deltaY);
     void speedCall(float _x, float _y, float _scale);
+    void processArguments(int argc, char *argv[]);
 
 
     RenderThread *threads;
@@ -88,8 +89,11 @@ private:
     QMutex  mutexQueue;
     bool *renderingDone;
     int  *renderingDoneLevel;
-    int rowMax, colMax;
+    int rowMax, colMax, Passes;
     enum {borderThreshold = 2};
+    enum _RUNNING_MODE{MODE_THREAD, MODE_MPI, MODE_GPU};
+    _RUNNING_MODE R_MODE;
+
 };
 //! [0]
 
