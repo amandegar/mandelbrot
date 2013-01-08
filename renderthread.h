@@ -87,7 +87,7 @@ private:
     int NumPasses;
 
 //    enum { ColormapSize = 512 };
-    enum { ColormapSize = 64 };
+    enum { ColormapSize = 256 };
 //    enum { ColormapSize = 2048 };
     uint colormap[ColormapSize];
 };
