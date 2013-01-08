@@ -56,15 +56,18 @@ class RenderThread : public QThread
     Q_OBJECT
 
 public:
-    RenderThread(QObject *parent = 0);
+    RenderThread(QObject *parent = 0, int inst=0);
     ~RenderThread();
 
     void render(double centerX, double centerY, double scaleFactor,
                 QSize resultSize);
 
+    void setInstanceNumber(int i);
+    void setNumberPasses(int Passes);
+
 signals:
     void renderedImage(const QImage &image, double scaleFactor, int instance);
-    void renderedDone(int instance, bool done);
+    void renderedDone(int instance, bool done, int level);
 
 protected:
     void run();
@@ -81,6 +84,7 @@ private:
     bool restart;
     bool abort;
     int instance;
+    int NumPasses;
 
 //    enum { ColormapSize = 512 };
     enum { ColormapSize = 64 };

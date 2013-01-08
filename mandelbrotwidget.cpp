@@ -47,8 +47,8 @@
 
 const double DefaultCenterX = -0.637011f;
 const double DefaultCenterY = -0.0395159f;
-//const double DefaultScale = 0.00403897f;
 const double DefaultScale = 0.00253897f;
+//const double DefaultScale = 0.00403897f;
 
 const double ZoomInFactor = 0.8f;
 const double ZoomOutFactor = 1 / ZoomInFactor;
@@ -57,23 +57,35 @@ const int ScrollStep = 20;
 MandelbrotWidget::MandelbrotWidget(QWidget *parent)
     : QWidget(parent)
 {
-    rowMax=3;
-    colMax=3;
+    rowMax=4;
+    colMax=4;
 
     //Amir
     QCoreApplication::arguments().at(QCoreApplication::arguments().indexOf("-type")+1);
     QStringList x = QCoreApplication::arguments();
     //Amir
+
+    renderingDone = new bool[rowMax * colMax];
+    renderingDoneLevel = new int[rowMax * colMax];
+    pixmap  = new QPixmap[rowMax * colMax];
+    threads = new RenderThread[rowMax * colMax];
+    for (int i = 0; i < rowMax * colMax ; i++)
+    {
+        threads[i].setInstanceNumber(i);
+        threads[i].setNumberPasses(4);
+        connect(threads+i, SIGNAL(renderedImage(QImage,double,int)),
+                this, SLOT(updatePixmap(QImage,double,int)));
+        connect(threads+i, SIGNAL(renderedDone(int,bool,int)),
+                this, SLOT(renderDone(int,bool,int)));
+
+    }
+
     centerX = DefaultCenterX;
     centerY = DefaultCenterY;
     pixmapScale = DefaultScale;
     curScale = DefaultScale;
 
     qRegisterMetaType<QImage>("QImage");
-    connect(&thread, SIGNAL(renderedImage(QImage,double,int)),
-            this, SLOT(updatePixmap(QImage,double,int)));
-    connect(&thread, SIGNAL(renderedDone(int,bool)),
-            this, SLOT(renderDone(int,bool)));
 
     setWindowTitle(tr("Mandelbrot - Parallel Processing"));
 #ifndef QT_NO_CURSOR
@@ -83,66 +95,88 @@ MandelbrotWidget::MandelbrotWidget(QWidget *parent)
     resize(1024, 768);
 }
 
-void MandelbrotWidget::paintEvent(QPaintEvent * /* event */)
+MandelbrotWidget::~MandelbrotWidget()
 {
+    delete [] renderingDone;
+    delete [] renderingDoneLevel;
+    delete [] pixmap;
+    delete [] threads;
+
+    for (int i = 0; i < rowMax * colMax ; i++)
+    {
+        threads[i].quit();
+        threads[i].wait();
+    }
+}
+
+void MandelbrotWidget::paintEvent(QPaintEvent * /* event */)
+{ 
     QPainter painter(this);
     painter.fillRect(rect(), Qt::black);
 
-    if (pixmap.isNull()) {
+    if (pixmap[0].isNull()) {
         painter.setPen(Qt::white);
         painter.drawText(rect(), Qt::AlignCenter,
                          tr("Rendering initial image, please wait..."));
         return;
     }
 
-    int textWidth;
+    int textWidth, pointCur;
     QRectF screen;
+    QString textStat;
     QRectF wholescreen = QRectF(0, 0, this->width(), this->height()); //Amir
-    QString textTrue = tr("Done.");
-    QString textFalse = tr("Processing...");
     QFontMetrics metrics = painter.fontMetrics();
 
 
-    for (int colCur=0; colCur< colMax; colCur++) //Amir
-        for (int rowCur=0; rowCur< rowMax; rowCur++) //Amir
+
+
+    for (int rowCur=0; rowCur< rowMax; rowCur++) //Amir
+        for (int colCur=0; colCur< colMax; colCur++) //Amir
         {
+        pointCur = rowCur * rowMax + colCur;
         screen = QRectF(colCur * this->width() / colMax, rowCur * this->height() / rowMax,
                         this->width() / colMax - borderThreshold , this->height() / rowMax - borderThreshold); //Amir
 
         if (curScale == pixmapScale) {
             //        painter.drawPixmap(pixmapOffset, pixmap);
-            painter.drawPixmap(screen, pixmap, wholescreen); //Amir
+            painter.drawPixmap(screen, pixmap[pointCur], wholescreen); //Amir
         } else {
             double scaleFactor = pixmapScale / curScale;
-            int newWidth = int(pixmap.width() * scaleFactor);
-            int newHeight = int(pixmap.height() * scaleFactor);
-            int newX = pixmapOffset.x() + (pixmap.width() - newWidth) / 2;
-            int newY = pixmapOffset.y() + (pixmap.height() - newHeight) / 2;
+            int newWidth = int(pixmap[pointCur].width() * scaleFactor);
+            int newHeight = int(pixmap[pointCur].height() * scaleFactor);
+            int newX = pixmapOffset.x() + (pixmap[pointCur].width() - newWidth) / 2;
+            int newY = pixmapOffset.y() + (pixmap[pointCur].height() - newHeight) / 2;
 
             painter.save();
-            painter.translate(newX, newY);
-            painter.scale(scaleFactor, scaleFactor);
-            QRectF exposed = painter.matrix().inverted().mapRect(rect()).adjusted(-1, -1, 1, 1);
-            painter.drawPixmap(screen, pixmap, wholescreen); //Amir
-            //        painter.drawPixmap(exposed, pixmap, exposed);
+//            painter.translate(newX, newY);
+//            painter.scale(scaleFactor, scaleFactor);
+//            QRectF exposed = painter.matrix().inverted().mapRect(rect()).adjusted(-1, -1, 1, 1);
+            painter.drawPixmap(screen, pixmap[pointCur], wholescreen); //Amir
+                //painter.drawPixmap(exposed, pixmap, exposed);
             painter.restore();
         }
 
-        if (renderingDone)
-            textWidth = metrics.width(textTrue);
+        if (renderingDone[pointCur])
+        {
+            textStat = tr("Process Done");
+            textWidth = metrics.width(textStat);
+        }
         else
-            textWidth = metrics.width(textFalse);
+        {
+            textStat = tr("Process Pass ") + QString(renderingDoneLevel[pointCur]+0x30);
+            textWidth = metrics.width(textStat);
+        }
 
         painter.setPen(Qt::NoPen);
         painter.setBrush(QColor(0, 0, 0, 127));
         painter.drawRect(screen.x(),
                          screen.y() + screen.height() -20,
-                         80,
+                         100,
                          20);
         painter.setPen(Qt::white);
         painter.drawText(screen.x() + 3,
                          screen.y() + screen.height() - 5,
-                         (renderingDone?textTrue:textFalse));
+                         textStat);
     }
     QString text = tr("Use mouse wheel or the '+' and '-' keys to zoom. "
                       "Press and hold left mouse button to scroll.");
@@ -160,7 +194,8 @@ void MandelbrotWidget::paintEvent(QPaintEvent * /* event */)
 
 void MandelbrotWidget::resizeEvent(QResizeEvent * /* event */)
 {
-    thread.render(centerX, centerY, curScale, size());
+    for (int i = 0; i< rowMax * colMax ; i++)
+        threads[i].render(centerX, centerY, curScale, size());
 }
 
 void MandelbrotWidget::keyPressEvent(QKeyEvent *event)
@@ -183,6 +218,30 @@ void MandelbrotWidget::keyPressEvent(QKeyEvent *event)
         break;
     case Qt::Key_Up:
         scroll(0, +ScrollStep);
+        break;
+    case Qt::Key_0:
+        speedCall(-0.637011f, -0.0395159f, 0.00253897f);
+        break;
+    case Qt::Key_1:
+        speedCall(-1.40, 0.00099, 0.00040);
+        break;
+    case Qt::Key_2:
+        speedCall(-1.40, 0.00050, 0.000009);
+        break;
+    case Qt::Key_3:
+        speedCall(0.20001, -0.5588, 0.0000119);
+        break;
+    case Qt::Key_4:
+        speedCall(-0.7721, 0.1137, 0.0000971);
+        break;
+    case Qt::Key_5:
+        speedCall(-1.36, -0.017, 0.0000461);
+        break;
+    case Qt::Key_6:
+        speedCall(-1.390, 0.0140, 0.0000096);
+        break;
+    case Qt::Key_7:
+        speedCall(-0.6495, 0.3623, 0.0000234);
         break;
     default:
         QWidget::keyPressEvent(event);
@@ -217,8 +276,8 @@ void MandelbrotWidget::mouseReleaseEvent(QMouseEvent *event)
         pixmapOffset += event->pos() - lastDragPos;
         lastDragPos = QPoint();
 
-        int deltaX = (width() - pixmap.width()) / 2 - pixmapOffset.x();
-        int deltaY = (height() - pixmap.height()) / 2 - pixmapOffset.y();
+        int deltaX = (width() - pixmap[0].width()) / 2 - pixmapOffset.x();
+        int deltaY = (height() - pixmap[0].height()) / 2 - pixmapOffset.y();
         scroll(deltaX, deltaY);
     }
 }
@@ -228,24 +287,29 @@ void MandelbrotWidget::updatePixmap(const QImage &image, double scaleFactor, int
     if (!lastDragPos.isNull())
         return;
 
-    pixmap = QPixmap::fromImage(image);
+    pixmap[instance] = QPixmap::fromImage(image);
     pixmapOffset = QPoint();
     lastDragPos = QPoint();
     pixmapScale = scaleFactor;
+//    mutexQueue.lock();
+//    renderedInstance.enqueue(instance);
+//    mutexQueue.unlock();
     update();
 }
 
-void MandelbrotWidget::renderDone(int instance, bool done)
+void MandelbrotWidget::renderDone(int instance, bool _done, int _level)
 {
-    renderingDone = done;
-//    update();
+    renderingDone[instance] = _done;
+    renderingDoneLevel[instance] = _level;
+    update();
 }
 
 void MandelbrotWidget::zoom(double zoomFactor)
 {
     curScale *= zoomFactor;
-//    update();
-    thread.render(centerX, centerY, curScale, size());
+    update();
+    for (int i = 0; i< rowMax * colMax ; i++)
+        threads[i].render(centerX, centerY, curScale, size());
 }
 
 void MandelbrotWidget::scroll(int deltaX, int deltaY)
@@ -253,6 +317,16 @@ void MandelbrotWidget::scroll(int deltaX, int deltaY)
     centerX += deltaX * curScale;
     centerY += deltaY * curScale;
     update();
-    thread.render(centerX, centerY, curScale, size());
+    for (int i = 0; i< rowMax * colMax ; i++)
+        threads[i].render(centerX, centerY, curScale, size());
 }
 
+void MandelbrotWidget::speedCall(float _x, float _y, float _scale)
+{
+    centerX = _x;
+    centerY = _y;
+    curScale = _scale;
+
+    for (int i = 0; i< rowMax * colMax ; i++)
+        threads[i].render(centerX, centerY, curScale, size());
+}

@@ -46,9 +46,10 @@
 #include "renderthread.h"
 
 //! [0]
-RenderThread::RenderThread(QObject *parent)
+RenderThread::RenderThread(QObject *parent, int inst)
     : QThread(parent)
 {
+    instance = inst;
     restart = false;
     abort = false;
 
@@ -60,7 +61,8 @@ RenderThread::~RenderThread()
 {
     mutex.lock();
     abort = true;
-    condition.wakeOne();
+//    condition.wakeOne();
+    condition.wakeAll();
     mutex.unlock();
 
     wait();
@@ -80,8 +82,19 @@ void RenderThread::render(double centerX, double centerY, double scaleFactor,
         start(LowPriority);
     } else {
         restart = true;
-        condition.wakeOne();
+//        condition.wakeOne();
+        condition.wakeAll();
     }
+}
+
+void RenderThread::setInstanceNumber(int i)
+{
+    this->instance = i;
+}
+
+void RenderThread::setNumberPasses(int Passes)
+{
+    NumPasses = Passes;
 }
 
 void RenderThread::run()
@@ -99,10 +112,9 @@ void RenderThread::run()
         int halfHeight = resultSize.height() / 2;
         QImage image(resultSize, QImage::Format_RGB32);
 
-        const int NumPasses = 4;
         int pass = 0;
         while (pass < NumPasses) {
-            emit renderedDone(instance, false);
+            emit renderedDone(instance, false, pass+1);
             const int MaxIterations = (1 << (2 * pass + 6)) + 32;
             const int Limit = 4;
             bool allBlack = true;
@@ -155,12 +167,13 @@ void RenderThread::run()
             }
         }
 
-        emit renderedDone(instance, true);
-
         mutex.lock();
 
         if (!restart)
+        {
+            emit renderedDone(instance, true, pass);
             condition.wait(&mutex);
+        }
         restart = false;
         mutex.unlock();
     }

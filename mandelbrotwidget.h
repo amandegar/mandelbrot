@@ -44,6 +44,7 @@
 
 #include <QPixmap>
 #include <QWidget>
+#include <QQueue>
 
 #include "renderthread.h"
 
@@ -54,6 +55,7 @@ class MandelbrotWidget : public QWidget
 
 public:
     MandelbrotWidget(QWidget *parent = 0);
+    ~MandelbrotWidget();
 
 protected:
     void paintEvent(QPaintEvent *event);
@@ -66,21 +68,26 @@ protected:
 
 private slots:
     void updatePixmap(const QImage &image, double scaleFactor, int instance);
-    void renderDone(int instance, bool state);
+    void renderDone(int instance, bool _done, int _level);
 
 private:
     void zoom(double zoomFactor);
     void scroll(int deltaX, int deltaY);
+    void speedCall(float _x, float _y, float _scale);
 
-    RenderThread thread;
-    QPixmap pixmap;
+
+    RenderThread *threads;
+    QPixmap *pixmap;
     QPoint pixmapOffset;
     QPoint lastDragPos;
     double centerX;
     double centerY;
     double pixmapScale;
     double curScale;
-    bool renderingDone;
+    QQueue<int> renderedInstance;
+    QMutex  mutexQueue;
+    bool *renderingDone;
+    int  *renderingDoneLevel;
     int rowMax, colMax;
     enum {borderThreshold = 2};
 };
