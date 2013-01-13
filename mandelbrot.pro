@@ -1,3 +1,6 @@
+QT += core gui network
+greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
+
 HEADERS       = mandelbrotwidget.h \
                 renderthread.h
 SOURCES       = main.cpp \

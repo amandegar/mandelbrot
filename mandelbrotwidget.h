@@ -74,6 +74,7 @@ private:
     void zoom(double zoomFactor);
     void scroll(int deltaX, int deltaY);
     void speedCall(float _x, float _y, float _scale);
+    void variaty();
     void processArguments(int argc, char *argv[]);
 
 

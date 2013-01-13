@@ -242,6 +242,9 @@ void MandelbrotWidget::keyPressEvent(QKeyEvent *event)
     case Qt::Key_7:
         speedCall(-0.6495, 0.3623, 0.0000234);
         break;
+    case Qt::Key_9:
+        variaty();
+        break;
     default:
         QWidget::keyPressEvent(event);
     }
@@ -330,11 +333,51 @@ void MandelbrotWidget::speedCall(float _x, float _y, float _scale)
         threads[i].render(centerX, centerY, curScale, size());
 }
 
+void MandelbrotWidget::variaty()
+{
+    for (int i = 0; i< rowMax * colMax ; i++)
+        switch(i)
+        {
+        case 0:
+            threads[i].render(-0.637011f, -0.0395159f, 0.00253897f, size());
+        break;
+        case 1:
+            threads[i].render(-0.7721, 0.1137, 0.0000171, size());
+        break;
+        case 2:
+            threads[i].render(-1.40, 0.00050, 0.000009, size());
+        break;
+        case 3:
+            threads[i].render(0.20001, -0.5588, 0.0000119, size());
+        break;
+        case 4:
+            threads[i].render(-1.390, 0.0140, 0.0000096, size());
+        break;
+        case 5:
+            threads[i].render(-1.36, -0.017, 0.0000461, size());
+        break;
+        case 6:
+            threads[i].render(-0.7721, 0.1137, 0.0000971, size());
+        break;
+        case 7:
+            threads[i].render(-0.6495, 0.3623, 0.0000234, size());
+        break;
+        case 8:
+            threads[i].render(-1.40, 0.00099, 0.00040, size());
+        break;
+        case 9:
+            threads[i].render(-0.7721, 0.1137, 0.0000971, size());
+        break;
+
+        }
+
+}
+
 void MandelbrotWidget::processArguments(int argc, char *argv[])
 {
     //Parameters row, col, pass, process(thread,mpi,gpu)
-    rowMax =2;
-    colMax =2;
+    rowMax =3;
+    colMax =3;
     Passes =4;
     R_MODE = MODE_THREAD;
 
