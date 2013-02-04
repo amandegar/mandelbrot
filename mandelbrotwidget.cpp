@@ -84,7 +84,7 @@ MandelbrotWidget::MandelbrotWidget(struct __parameterCurrent *paraCur, QWidget *
             instances[i].thread->setInstanceNumber(i);
             instances[i].thread->setNumberPasses(Passes);
             connect(instances[i].thread, SIGNAL(renderedImage(QImage,double,int)),
-                    this, SLOT(updatePixmap(QImage,double,int)));
+                    this, SLOT(updatePixmap(QImage,double,int)),Qt::BlockingQueuedConnection);
             connect(instances[i].thread, SIGNAL(renderedDone(int,bool,int)),
                     this, SLOT(renderDone(int,bool,int)));
         }
@@ -92,7 +92,6 @@ MandelbrotWidget::MandelbrotWidget(struct __parameterCurrent *paraCur, QWidget *
     case MODE_MPI:
         this->instance_listenMPI = new listenMPI();
         connect(instance_listenMPI, SIGNAL(renderedImage(QImage,double,int)),
-//                this, SLOT(updatePixmap(QImage,double,int)));
                 this, SLOT(updatePixmap(QImage,double,int)), Qt::BlockingQueuedConnection);
         connect(instance_listenMPI, SIGNAL(renderedDone(int,bool,int)),
                 this, SLOT(renderDone(int,bool,int)));
@@ -116,7 +115,7 @@ MandelbrotWidget::MandelbrotWidget(struct __parameterCurrent *paraCur, QWidget *
 #ifndef QT_NO_CURSOR
     setCursor(Qt::CrossCursor);
 #endif
-    //    resize(550, 400);
+//        resize(550, 400);
     resize(1024, 768);
 }
 
