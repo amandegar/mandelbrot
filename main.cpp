@@ -40,15 +40,95 @@
 ****************************************************************************/
 
 #include <QApplication>
+#include <QTimer>
 
 #include "mandelbrotwidget.h"
+#include "mandelbrotcore.h"
+#include "argument.h"
 
-//! [0]
+void processArguments(int argc, char *argv[], struct __parameterCurrent *paramCurrent)
+{
+    //Parameters row, col, pass, process(thread,mpi,gpu)
+    paramCurrent->rowMax =2;
+    paramCurrent->colMax =2;
+    paramCurrent->Passes =4;
+    paramCurrent->R_MODE = MODE_THREAD;
+
+    int c;
+    while((c = getopt(argc, argv, "r:c:p:m:t:h?")) != -1)
+    {
+        switch(c)
+        {
+        case 'r':
+            paramCurrent->rowMax = atoi(optarg);
+            break;
+        case 'c':
+            paramCurrent->colMax = atoi(optarg);
+            break;
+        case 'p':
+            paramCurrent->Passes = atoi(optarg);
+            break;
+        case 'm':
+            if (!strcmp(optarg,"thread"))
+                paramCurrent->R_MODE = MODE_THREAD;
+            else if (!strcmp(optarg,"mpi"))
+                paramCurrent->R_MODE = MODE_MPI;
+            else if (!strcmp(optarg,"gpu"))
+                paramCurrent->R_MODE = MODE_GPU;
+            break;
+        case '?':
+        case 'h':
+        default :
+            std::cout << "Mandelbrot parallel processing application(Version: 8 Jan 2013)" <<std::endl;
+            std::cout << "Expanded by Amir Hossein Mandegar<amandegar@computer.org>" <<std::endl;
+            std::cout << "Usage: mandelbrot [OPTION]"<<std::endl;
+            std::cout << " -r [NUMBER]   Number of instance in row(default=2)" <<std::endl;
+            std::cout << " -c [NUMBER]   Number of instance in column(default=2)" <<std::endl;
+            std::cout << " -p [NUMBER]   Number of mandelrot passes level(default=4)" <<std::endl;
+            std::cout << " -m [STRING]   Processing mod. thread(default), mpi, gpu" <<std::endl;
+            std::cout << std::endl;
+            exit(0);
+        }
+    }
+}
+
 int main(int argc, char *argv[])
 {
+    int ret;
+    struct __parameterCurrent paramCur;
+
+    processArguments(argc, argv, &paramCur);
+    switch(paramCur.R_MODE)
+    {
+    case MODE_MPI:
+        int numtasks, rank, init_provided;
+
+//        MPI_Init(&argc,&argv);
+        MPI_Init_thread(&argc, &argv,MPI_THREAD_MULTIPLE,&init_provided);
+        if (init_provided != MPI_THREAD_MULTIPLE)
+        {
+            qDebug() << "MPI_THREAD_MULTIPLE not set.";
+            exit(1);
+        }
+        MPI_Comm_size(MPI_COMM_WORLD, &numtasks);
+        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+        if (rank != 0)
+        {
+            QCoreApplication app(argc, argv);
+            mandelbrotcore mand(&paramCur, numtasks, rank);
+            ret = app.exec();
+            MPI_Finalize();
+            return ret;
+        }
+    case MODE_GPU:
+        break;
+    }
     QApplication app(argc, argv);
-    MandelbrotWidget widget(argc, argv);
-    widget.show();
-    return app.exec();
+    MandelbrotWidget mand(&paramCur);
+    mand.show();
+    ret = app.exec();
+    if (paramCur.R_MODE) MPI_Finalize();
+    return ret;
+
 }
-//! [0]

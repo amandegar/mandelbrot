@@ -52,6 +52,7 @@ RenderThread::RenderThread(QObject *parent, int inst)
     instance = inst;
     restart = false;
     abort = false;
+    NumPasses = 4;
 
     for (int i = 0; i < ColormapSize; ++i)
         colormap[i] = rgbFromWaveLength(380.0 + (i * 400.0 / ColormapSize));
@@ -157,7 +158,7 @@ void RenderThread::run()
             }
 
             if (allBlack && pass == 0) {
-                pass = 4;
+                pass = this->NumPasses;
             } else {
                 if (!restart)
                     emit renderedImage(image, scaleFactor, instance);

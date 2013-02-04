@@ -47,6 +47,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <iostream>
+#include<mpi.h>
 
 #include "mandelbrotwidget.h"
 
@@ -59,30 +60,47 @@ const double ZoomInFactor = 0.8f;
 const double ZoomOutFactor = 1 / ZoomInFactor;
 const int ScrollStep = 20;
 
-MandelbrotWidget::MandelbrotWidget(int argc, char *argv[], QWidget *parent)
+MandelbrotWidget::MandelbrotWidget(struct __parameterCurrent *paraCur, QWidget *parent)
     : QWidget(parent)
 {
-    this->processArguments(argc, argv);
+    this->R_MODE = paraCur->R_MODE;
+    this->rowMax = paraCur->rowMax;
+    this->colMax = paraCur->colMax;
+    this->Passes = paraCur->Passes;
 
     //Amir
-    QCoreApplication::arguments().at(QCoreApplication::arguments().indexOf("-type")+1);
-    QStringList x = QCoreApplication::arguments();
+//    QCoreApplication::arguments().at(QCoreApplication::arguments().indexOf("-type")+1);
+//    QStringList x = QCoreApplication::arguments();
     //Amir
 
     renderingDone = new bool[rowMax * colMax];
     renderingDoneLevel = new int[rowMax * colMax];
     pixmap  = new QPixmap[rowMax * colMax];
 
-    threads = new RenderThread[rowMax * colMax];
-    for (int i = 0; i < rowMax * colMax ; i++)
+    switch(R_MODE)
     {
-        threads[i].setInstanceNumber(i);
-        threads[i].setNumberPasses(Passes);
-        connect(threads+i, SIGNAL(renderedImage(QImage,double,int)),
+    case MODE_THREAD:
+        threads = new RenderThread[rowMax * colMax];
+        for (int i = 0; i < rowMax * colMax ; i++)
+        {
+            threads[i].setInstanceNumber(i);
+            threads[i].setNumberPasses(Passes);
+            connect(threads+i, SIGNAL(renderedImage(QImage,double,int)),
+                    this, SLOT(updatePixmap(QImage,double,int)));
+            connect(threads+i, SIGNAL(renderedDone(int,bool,int)),
+                    this, SLOT(renderDone(int,bool,int)));
+        }
+    break;
+    case MODE_MPI:
+        this->instance_listenMPI = new listenMPI();
+        connect(instance_listenMPI, SIGNAL(renderedImage(QImage,double,int)),
                 this, SLOT(updatePixmap(QImage,double,int)));
-        connect(threads+i, SIGNAL(renderedDone(int,bool,int)),
+        connect(instance_listenMPI, SIGNAL(renderedDone(int,bool,int)),
                 this, SLOT(renderDone(int,bool,int)));
-
+        instance_listenMPI->start();
+        break;
+    case MODE_GPU:
+        break;
     }
 
     centerX = DefaultCenterX;
@@ -102,6 +120,12 @@ MandelbrotWidget::MandelbrotWidget(int argc, char *argv[], QWidget *parent)
 
 MandelbrotWidget::~MandelbrotWidget()
 {
+    if (R_MODE == MODE_MPI)
+    {
+        for (int i=1;i<rowMax * colMax;i++)
+            MPI_Send((void *)'E', 1, MPI_BYTE, i, 1, MPI_COMM_WORLD);
+        delete instance_listenMPI;
+    }
     delete [] renderingDone;
     delete [] renderingDoneLevel;
     delete [] pixmap;
@@ -194,7 +218,8 @@ void MandelbrotWidget::paintEvent(QPaintEvent * /* event */)
 void MandelbrotWidget::resizeEvent(QResizeEvent * /* event */)
 {
     for (int i = 0; i< rowMax * colMax ; i++)
-        threads[i].render(centerX, centerY, curScale, size());
+        this->renderWrapper(centerX, centerY, curScale, size(), i);
+//        threads[i].render(centerX, centerY, curScale, size());
 }
 
 void MandelbrotWidget::keyPressEvent(QKeyEvent *event)
@@ -293,9 +318,6 @@ void MandelbrotWidget::updatePixmap(const QImage &image, double scaleFactor, int
     pixmapOffset = QPoint();
     lastDragPos = QPoint();
     pixmapScale = scaleFactor;
-//    mutexQueue.lock();
-//    renderedInstance.enqueue(instance);
-//    mutexQueue.unlock();
     update();
 }
 
@@ -311,7 +333,8 @@ void MandelbrotWidget::zoom(double zoomFactor)
     curScale *= zoomFactor;
     update();
     for (int i = 0; i< rowMax * colMax ; i++)
-        threads[i].render(centerX, centerY, curScale, size());
+        this->renderWrapper(centerX, centerY, curScale, size(), i);
+//        threads[i].render(centerX, centerY, curScale, size());
 }
 
 void MandelbrotWidget::scroll(int deltaX, int deltaY)
@@ -320,7 +343,8 @@ void MandelbrotWidget::scroll(int deltaX, int deltaY)
     centerY += deltaY * curScale;
     update();
     for (int i = 0; i< rowMax * colMax ; i++)
-        threads[i].render(centerX, centerY, curScale, size());
+        this->renderWrapper(centerX, centerY, curScale, size(), i);
+//        threads[i].render(centerX, centerY, curScale, size());
 }
 
 void MandelbrotWidget::speedCall(float _x, float _y, float _scale)
@@ -330,7 +354,8 @@ void MandelbrotWidget::speedCall(float _x, float _y, float _scale)
     curScale = _scale;
 
     for (int i = 0; i< rowMax * colMax ; i++)
-        threads[i].render(centerX, centerY, curScale, size());
+        this->renderWrapper(centerX, centerY, curScale, size(), i);
+//        threads[i].render(centerX, centerY, curScale, size());
 }
 
 void MandelbrotWidget::variaty()
@@ -339,82 +364,72 @@ void MandelbrotWidget::variaty()
         switch(i)
         {
         case 0:
-            threads[i].render(-0.637011f, -0.0395159f, 0.00253897f, size());
+            this->renderWrapper(-0.637011f, -0.0395159f, 0.00253897f, size(), i);
+//            threads[i].render(-0.637011f, -0.0395159f, 0.00253897f, size());
         break;
         case 1:
-            threads[i].render(-0.7721, 0.1137, 0.0000171, size());
+            this->renderWrapper(-0.7721, 0.1137, 0.0000171, size(), i);
+//            threads[i].render(-0.7721, 0.1137, 0.0000171, size());
         break;
         case 2:
-            threads[i].render(-1.40, 0.00050, 0.000009, size());
+            this->renderWrapper(-1.40, 0.00050, 0.000009, size(), i);
+//            threads[i].render(-1.40, 0.00050, 0.000009, size());
         break;
         case 3:
-            threads[i].render(0.20001, -0.5588, 0.0000119, size());
+            this->renderWrapper(0.20001, -0.5588, 0.0000119, size(), i);
+//            threads[i].render(0.20001, -0.5588, 0.0000119, size());
         break;
         case 4:
-            threads[i].render(-1.390, 0.0140, 0.0000096, size());
+            this->renderWrapper(-1.390, 0.0140, 0.0000096, size(), i);
+//            threads[i].render(-1.390, 0.0140, 0.0000096, size());
         break;
         case 5:
-            threads[i].render(-1.36, -0.017, 0.0000461, size());
+            this->renderWrapper(-1.36, -0.017, 0.0000461, size(), i);
+//            threads[i].render(-1.36, -0.017, 0.0000461, size());
         break;
         case 6:
-            threads[i].render(-0.7721, 0.1137, 0.0000971, size());
+            this->renderWrapper(-0.7721, 0.1137, 0.0000971, size(), i);
+//            threads[i].render(-0.7721, 0.1137, 0.0000971, size());
         break;
         case 7:
-            threads[i].render(-0.6495, 0.3623, 0.0000234, size());
+            this->renderWrapper(-0.6495, 0.3623, 0.0000234, size(), i);
+//            threads[i].render(-0.6495, 0.3623, 0.0000234, size());
         break;
         case 8:
-            threads[i].render(-1.40, 0.00099, 0.00040, size());
+            this->renderWrapper(-1.40, 0.00099, 0.00040, size(), i);
+//            threads[i].render(-1.40, 0.00099, 0.00040, size());
         break;
         case 9:
-            threads[i].render(-0.7721, 0.1137, 0.0000971, size());
+            this->renderWrapper(-0.7721, 0.1137, 0.0000971, size(), i);
+//            threads[i].render(-0.7721, 0.1137, 0.0000971, size());
         break;
 
         }
 
 }
 
-void MandelbrotWidget::processArguments(int argc, char *argv[])
+void MandelbrotWidget::renderWrapper(double _centerX, double _centerY, double _scaleFactor,
+                   QSize _resultSize, int _instance)
 {
-    //Parameters row, col, pass, process(thread,mpi,gpu)
-    rowMax =3;
-    colMax =3;
-    Passes =4;
-    R_MODE = MODE_THREAD;
-
-    int c;
-    while((c = getopt(argc, argv, "r:c:p:t:h?")) != -1)
+    this->Lock.lock();
+    switch(this->R_MODE){
+    case MODE_THREAD:
+        threads[_instance].render(_centerX, _centerY, _scaleFactor, _resultSize);
+        break;
+    case MODE_MPI:
     {
-        switch(c)
-        {
-        case 'r':
-            rowMax = atoi(optarg);
-            break;
-        case 'c':
-            colMax = atoi(optarg);
-            break;
-        case 'p':
-            Passes = atoi(optarg);
-            break;
-        case'm':
-            if (!strcmp(optarg,"thread"))
-                R_MODE = MODE_THREAD;
-            else if (!strcmp(optarg,"mpi"))
-                R_MODE = MODE_MPI;
-            else if (!strcmp(optarg,"gpu"))
-                R_MODE = MODE_GPU;
-            break;
-        case'?':
-        case'h':
-        default:
-            std::cout << "Mandelbrot parallel processing application(Version: 8 Jan 2013)" <<std::endl;
-            std::cout << "Expanded by Amir Hossein Mandegar<amandegar@computer.org>" <<std::endl;
-            std::cout << "Usage: mandelbrot [OPTION]"<<std::endl;
-            std::cout << " -r [NUMBER]   Number of instance in row(default=2)" <<std::endl;
-            std::cout << " -c [NUMBER]   Number of instance in column(default=2)" <<std::endl;
-            std::cout << " -p [NUMBER]   Number of mandelrot passes level(default=4)" <<std::endl;
-            std::cout << " -m [STRING]   Processing mod. thread(default), mpi, gpu" <<std::endl;
-            std::cout << std::endl;
-            exit(0);
-        }
+        __protocolRender pRender;
+        pRender.centerX = _centerX;
+        pRender.centerY = _centerY;
+        pRender.scaleFactor = _scaleFactor;
+        pRender.resultSize_h = _resultSize.height();
+        pRender.resultSize_w = _resultSize.width();
+        int rc = MPI_Send(&pRender, sizeof(pRender), MPI_BYTE, _instance+1, 1, MPI_COMM_WORLD);
+        break;
     }
+    case MODE_GPU:
+        qDebug("Not yet defined?");
+        break;
+    }
+    this->Lock.unlock();
 }

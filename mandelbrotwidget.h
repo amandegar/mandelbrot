@@ -47,14 +47,15 @@
 #include <QQueue>
 
 #include "renderthread.h"
+#include "listenmpi.h"
+#include "argument.h"
 
-//! [0]
 class MandelbrotWidget : public QWidget
 {
     Q_OBJECT
 
 public:
-    MandelbrotWidget(int argc, char *argv[], QWidget *parent = 0);
+    MandelbrotWidget(struct __parameterCurrent *paraCur, QWidget *parent = 0);
     ~MandelbrotWidget();
 
 protected:
@@ -75,9 +76,17 @@ private:
     void scroll(int deltaX, int deltaY);
     void speedCall(float _x, float _y, float _scale);
     void variaty();
-    void processArguments(int argc, char *argv[]);
+    void MPI_startListen();
+    void renderWrapper(double _centerX, double _centerY, double _scaleFactor,
+                       QSize _resultSize, int _instance);
 
 
+    enum {borderThreshold = 2};
+
+    struct _thread{
+
+    };
+    struct _thread *threads;
     RenderThread *threads;
     QPixmap *pixmap;
     QPoint pixmapOffset;
@@ -91,11 +100,10 @@ private:
     bool *renderingDone;
     int  *renderingDoneLevel;
     int rowMax, colMax, Passes;
-    enum {borderThreshold = 2};
-    enum _RUNNING_MODE{MODE_THREAD, MODE_MPI, MODE_GPU};
     _RUNNING_MODE R_MODE;
+    QMutex  Lock;
+    listenMPI *instance_listenMPI;
 
 };
-//! [0]
 
 #endif
