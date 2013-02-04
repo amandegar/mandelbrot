@@ -23,12 +23,12 @@ void listenMPI::run()
         {
         case 'E': //Exit
         {
-            qDebug() <<"MPI get EXIT";
+            qDebug() <<"EXIT";
             exit(0);
         }
         case 'I': // Image
         {
-            qDebug() <<"MPI get IMAGE" << count;
+            qDebug() <<"IMAGE from" << source;
             __protocolImage *pImage = (__protocolImage *)buffer;
             QImage tImage(buffer + sizeof(__protocolImage), pImage->width, pImage->height, QImage::Format_RGB32);
             emit renderedImage(tImage, pImage->scaleFactor, source);
@@ -36,14 +36,14 @@ void listenMPI::run()
         }
         case 'D': // Done
         {
-            qDebug() << "MPI get Done " << count;
+            qDebug() << "Done from" << source;
             __protocolDone *pDone = (__protocolDone *)buffer;
             emit renderedDone(source, pDone->done, pDone->level);
             break;
         }
         case 'R': //Render
         {
-            qDebug("MPI get RENDER %d ", count);
+            qDebug() << "RENDER";
             __protocolRender *pRender = (__protocolRender *)buffer;
             emit renderThread(pRender->centerX, pRender->centerY, pRender->scaleFactor, QSize(pRender->resultSize_w, pRender->resultSize_h));
             break;

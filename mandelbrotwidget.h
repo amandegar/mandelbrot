@@ -83,22 +83,21 @@ private:
 
     enum {borderThreshold = 2};
 
-    struct _thread{
+    struct _instance{
+        RenderThread *thread;
+        QPixmap pixmap;
+        bool renderingDone;
+        int  renderingDoneLevel;
+        double centerX;
+        double centerY;
+        double pixmapScale;
+        double curScale;
+    } *instances;
 
-    };
-    struct _thread *threads;
-    RenderThread *threads;
-    QPixmap *pixmap;
     QPoint pixmapOffset;
     QPoint lastDragPos;
-    double centerX;
-    double centerY;
-    double pixmapScale;
-    double curScale;
-    QQueue<int> renderedInstance;
+//    QQueue<int> renderedInstance;
     QMutex  mutexQueue;
-    bool *renderingDone;
-    int  *renderingDoneLevel;
     int rowMax, colMax, Passes;
     _RUNNING_MODE R_MODE;
     QMutex  Lock;

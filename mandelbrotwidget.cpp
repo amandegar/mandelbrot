@@ -73,28 +73,27 @@ MandelbrotWidget::MandelbrotWidget(struct __parameterCurrent *paraCur, QWidget *
 //    QStringList x = QCoreApplication::arguments();
     //Amir
 
-    renderingDone = new bool[rowMax * colMax];
-    renderingDoneLevel = new int[rowMax * colMax];
-    pixmap  = new QPixmap[rowMax * colMax];
+    instances = new struct _instance[rowMax * colMax];
 
     switch(R_MODE)
     {
     case MODE_THREAD:
-        threads = new RenderThread[rowMax * colMax];
         for (int i = 0; i < rowMax * colMax ; i++)
         {
-            threads[i].setInstanceNumber(i);
-            threads[i].setNumberPasses(Passes);
-            connect(threads+i, SIGNAL(renderedImage(QImage,double,int)),
+            instances[i].thread = new RenderThread();
+            instances[i].thread->setInstanceNumber(i);
+            instances[i].thread->setNumberPasses(Passes);
+            connect(instances[i].thread, SIGNAL(renderedImage(QImage,double,int)),
                     this, SLOT(updatePixmap(QImage,double,int)));
-            connect(threads+i, SIGNAL(renderedDone(int,bool,int)),
+            connect(instances[i].thread, SIGNAL(renderedDone(int,bool,int)),
                     this, SLOT(renderDone(int,bool,int)));
         }
     break;
     case MODE_MPI:
         this->instance_listenMPI = new listenMPI();
         connect(instance_listenMPI, SIGNAL(renderedImage(QImage,double,int)),
-                this, SLOT(updatePixmap(QImage,double,int)));
+//                this, SLOT(updatePixmap(QImage,double,int)));
+                this, SLOT(updatePixmap(QImage,double,int)), Qt::BlockingQueuedConnection);
         connect(instance_listenMPI, SIGNAL(renderedDone(int,bool,int)),
                 this, SLOT(renderDone(int,bool,int)));
         instance_listenMPI->start();
@@ -103,10 +102,13 @@ MandelbrotWidget::MandelbrotWidget(struct __parameterCurrent *paraCur, QWidget *
         break;
     }
 
-    centerX = DefaultCenterX;
-    centerY = DefaultCenterY;
-    pixmapScale = DefaultScale;
-    curScale = DefaultScale;
+    for (int i = 0; i < rowMax * colMax ; i++)
+    {
+        instances[i].centerX = DefaultCenterX;
+        instances[i].centerY = DefaultCenterY;
+        instances[i].pixmapScale = DefaultScale;
+        instances[i].curScale = DefaultScale;
+    }
 
     qRegisterMetaType<QImage>("QImage");
 
@@ -120,16 +122,17 @@ MandelbrotWidget::MandelbrotWidget(struct __parameterCurrent *paraCur, QWidget *
 
 MandelbrotWidget::~MandelbrotWidget()
 {
-    if (R_MODE == MODE_MPI)
+    if (R_MODE == MODE_THREAD)
     {
-        for (int i=1;i<rowMax * colMax;i++)
+        for (int i = 0; i < rowMax * colMax ; i++)
+            delete instances[i].thread;
+    }else if (R_MODE == MODE_MPI)
+    {
+        for (int i = 0; i < rowMax * colMax ; i++)
             MPI_Send((void *)'E', 1, MPI_BYTE, i, 1, MPI_COMM_WORLD);
         delete instance_listenMPI;
     }
-    delete [] renderingDone;
-    delete [] renderingDoneLevel;
-    delete [] pixmap;
-    delete [] threads;
+    delete [] instances;
 }
 
 void MandelbrotWidget::paintEvent(QPaintEvent * /* event */)
@@ -137,7 +140,7 @@ void MandelbrotWidget::paintEvent(QPaintEvent * /* event */)
     QPainter painter(this);
     painter.fillRect(rect(), Qt::black);
 
-    if (pixmap[0].isNull()) {
+    if (instances[0].pixmap.isNull()) {
         painter.setPen(Qt::white);
         painter.drawText(rect(), Qt::AlignCenter,
                          tr("Rendering initial image, please wait..."));
@@ -160,9 +163,9 @@ void MandelbrotWidget::paintEvent(QPaintEvent * /* event */)
         screen = QRectF(colCur * this->width() / colMax, rowCur * this->height() / rowMax,
                         this->width() / colMax - borderThreshold , this->height() / rowMax - borderThreshold); //Amir
 
-        if (curScale == pixmapScale) {
+        if (instances[pointCur].curScale == instances[pointCur].pixmapScale) {
             //        painter.drawPixmap(pixmapOffset, pixmap);
-            painter.drawPixmap(screen, pixmap[pointCur], wholescreen); //Amir
+            painter.drawPixmap(screen, instances[pointCur].pixmap, wholescreen); //Amir
         } else {
 //            double scaleFactor = pixmapScale / curScale;
 //            int newWidth = int(pixmap[pointCur].width() * scaleFactor);
@@ -174,19 +177,19 @@ void MandelbrotWidget::paintEvent(QPaintEvent * /* event */)
 //            painter.translate(newX, newY);
 //            painter.scale(scaleFactor, scaleFactor);
 //            QRectF exposed = painter.matrix().inverted().mapRect(rect()).adjusted(-1, -1, 1, 1);
-            painter.drawPixmap(screen, pixmap[pointCur], wholescreen); //Amir
+            painter.drawPixmap(screen, instances[pointCur].pixmap, wholescreen); //Amir
                 //painter.drawPixmap(exposed, pixmap, exposed);
             painter.restore();
         }
 
-        if (renderingDone[pointCur])
+        if (instances[pointCur].renderingDone)
         {
             textStat = tr("Process Done");
             textWidth = metrics.width(textStat);
         }
         else
         {
-            textStat = tr("Process Pass ") + QString(renderingDoneLevel[pointCur]+0x30);
+            textStat = tr("Process Pass ") + QString(instances[pointCur].renderingDoneLevel+0x30);
             textWidth = metrics.width(textStat);
         }
 
@@ -218,7 +221,7 @@ void MandelbrotWidget::paintEvent(QPaintEvent * /* event */)
 void MandelbrotWidget::resizeEvent(QResizeEvent * /* event */)
 {
     for (int i = 0; i< rowMax * colMax ; i++)
-        this->renderWrapper(centerX, centerY, curScale, size(), i);
+        this->renderWrapper(instances[i].centerX, instances[i].centerY, instances[i].curScale, size(), i);
 //        threads[i].render(centerX, centerY, curScale, size());
 }
 
@@ -303,8 +306,8 @@ void MandelbrotWidget::mouseReleaseEvent(QMouseEvent *event)
         pixmapOffset += event->pos() - lastDragPos;
         lastDragPos = QPoint();
 
-        int deltaX = (width() - pixmap[0].width()) / 2 - pixmapOffset.x();
-        int deltaY = (height() - pixmap[0].height()) / 2 - pixmapOffset.y();
+        int deltaX = (width() - instances[0].pixmap.width()) / 2 - pixmapOffset.x();
+        int deltaY = (height() - instances[0].pixmap.height()) / 2 - pixmapOffset.y();
         scroll(deltaX, deltaY);
     }
 }
@@ -314,98 +317,115 @@ void MandelbrotWidget::updatePixmap(const QImage &image, double scaleFactor, int
     if (!lastDragPos.isNull())
         return;
 
-    pixmap[instance] = QPixmap::fromImage(image);
+    instances[instance].pixmap = QPixmap::fromImage(image);
     pixmapOffset = QPoint();
     lastDragPos = QPoint();
-    pixmapScale = scaleFactor;
+    instances[instance].pixmapScale = scaleFactor;
     update();
 }
 
 void MandelbrotWidget::renderDone(int instance, bool _done, int _level)
 {
-    renderingDone[instance] = _done;
-    renderingDoneLevel[instance] = _level;
+    instances[instance].renderingDone = _done;
+    instances[instance].renderingDoneLevel = _level;
     update();
 }
 
 void MandelbrotWidget::zoom(double zoomFactor)
 {
-    curScale *= zoomFactor;
-    update();
     for (int i = 0; i< rowMax * colMax ; i++)
-        this->renderWrapper(centerX, centerY, curScale, size(), i);
+        instances[i].curScale *= zoomFactor;
+//    update();
+    for (int i = 0; i< rowMax * colMax ; i++)
+        this->renderWrapper(instances[i].centerX, instances[i].centerY, instances[i].curScale, size(), i);
 //        threads[i].render(centerX, centerY, curScale, size());
 }
 
 void MandelbrotWidget::scroll(int deltaX, int deltaY)
 {
-    centerX += deltaX * curScale;
-    centerY += deltaY * curScale;
+    for (int i = 0; i< rowMax * colMax ; i++)
+    {
+        instances[i].centerX += deltaX * instances[i].curScale;
+        instances[i].centerY += deltaY * instances[i].curScale;
+    }
     update();
     for (int i = 0; i< rowMax * colMax ; i++)
-        this->renderWrapper(centerX, centerY, curScale, size(), i);
+        this->renderWrapper(instances[i].centerX, instances[i].centerY, instances[i].curScale, size(), i);
 //        threads[i].render(centerX, centerY, curScale, size());
 }
 
 void MandelbrotWidget::speedCall(float _x, float _y, float _scale)
 {
-    centerX = _x;
-    centerY = _y;
-    curScale = _scale;
-
     for (int i = 0; i< rowMax * colMax ; i++)
-        this->renderWrapper(centerX, centerY, curScale, size(), i);
+    {
+        instances[i].centerX = _x;
+        instances[i].centerY = _y;
+        instances[i].curScale = _scale;
+        this->renderWrapper(instances[i].centerX, instances[i].centerY, instances[i].curScale, size(), i);
 //        threads[i].render(centerX, centerY, curScale, size());
+    }
 }
 
 void MandelbrotWidget::variaty()
 {
     for (int i = 0; i< rowMax * colMax ; i++)
+    {
         switch(i)
         {
         case 0:
-            this->renderWrapper(-0.637011f, -0.0395159f, 0.00253897f, size(), i);
-//            threads[i].render(-0.637011f, -0.0395159f, 0.00253897f, size());
+            instances[i].centerX = -0.637011f;
+            instances[i].centerY = -0.0395159f;
+            instances[i].curScale = 0.00253897f;
         break;
         case 1:
-            this->renderWrapper(-0.7721, 0.1137, 0.0000171, size(), i);
-//            threads[i].render(-0.7721, 0.1137, 0.0000171, size());
+            instances[i].centerX = -0.7721;
+            instances[i].centerY = 0.1137;
+            instances[i].curScale = 0.0000171;
         break;
         case 2:
-            this->renderWrapper(-1.40, 0.00050, 0.000009, size(), i);
-//            threads[i].render(-1.40, 0.00050, 0.000009, size());
+            instances[i].centerX = -1.40;
+            instances[i].centerY = 0.00050;
+            instances[i].curScale = 0.000009;
         break;
         case 3:
-            this->renderWrapper(0.20001, -0.5588, 0.0000119, size(), i);
-//            threads[i].render(0.20001, -0.5588, 0.0000119, size());
+            instances[i].centerX = 0.20001;
+            instances[i].centerY = -0.5588;
+            instances[i].curScale = 0.0000119;
         break;
         case 4:
-            this->renderWrapper(-1.390, 0.0140, 0.0000096, size(), i);
-//            threads[i].render(-1.390, 0.0140, 0.0000096, size());
+            instances[i].centerX = -1.390;
+            instances[i].centerY = 0.0140;
+            instances[i].curScale = 0.0000096;
         break;
         case 5:
-            this->renderWrapper(-1.36, -0.017, 0.0000461, size(), i);
-//            threads[i].render(-1.36, -0.017, 0.0000461, size());
+            instances[i].centerX = -1.36;
+            instances[i].centerY = -0.017;
+            instances[i].curScale = 0.0000461;
         break;
         case 6:
-            this->renderWrapper(-0.7721, 0.1137, 0.0000971, size(), i);
-//            threads[i].render(-0.7721, 0.1137, 0.0000971, size());
+            instances[i].centerX = -0.7721;
+            instances[i].centerY = 0.1137;
+            instances[i].curScale = 0.0000971;
         break;
         case 7:
-            this->renderWrapper(-0.6495, 0.3623, 0.0000234, size(), i);
-//            threads[i].render(-0.6495, 0.3623, 0.0000234, size());
+            instances[i].centerX = -0.6495;
+            instances[i].centerY = 0.3623;
+            instances[i].curScale = 0.0000234;
         break;
         case 8:
-            this->renderWrapper(-1.40, 0.00099, 0.00040, size(), i);
-//            threads[i].render(-1.40, 0.00099, 0.00040, size());
+            instances[i].centerX = -1.40;
+            instances[i].centerY = 0.00099;
+            instances[i].curScale = 0.00040;
         break;
         case 9:
-            this->renderWrapper(-0.7721, 0.1137, 0.0000971, size(), i);
-//            threads[i].render(-0.7721, 0.1137, 0.0000971, size());
+            instances[i].centerX = -0.7721;
+            instances[i].centerY = 0.1137;
+            instances[i].curScale = 0.0000971;
         break;
-
         }
-
+        this->renderWrapper(instances[i].centerX, instances[i].centerY, instances[i].curScale, size(), i);
+//        threads[i].render(instances[i].centerX, instances[i].centerY, instances[i].curScale);
+    }
 }
 
 void MandelbrotWidget::renderWrapper(double _centerX, double _centerY, double _scaleFactor,
@@ -414,7 +434,7 @@ void MandelbrotWidget::renderWrapper(double _centerX, double _centerY, double _s
     this->Lock.lock();
     switch(this->R_MODE){
     case MODE_THREAD:
-        threads[_instance].render(_centerX, _centerY, _scaleFactor, _resultSize);
+        instances[_instance].thread->render(_centerX, _centerY, _scaleFactor, _resultSize);
         break;
     case MODE_MPI:
     {

@@ -39,8 +39,8 @@ void mandelbrotcore::MPI_updatePixmap(const QImage &image, double scaleFactor, i
     memcpy(this->buffer , &pImage, sizeof(__protocolImage));
     memcpy(this->buffer + sizeof(__protocolImage), image.bits() , image.byteCount());
 
-    qDebug() << pImage.width << pImage.height << image.byteCount()<< sizeof(__protocolImage);
-    qDebug() <<"QImage size --> "<<sizeof(__protocolImage) + image.byteCount() << "<" << MPI_BUFFER_SIZE;
+//    qDebug() << pImage.width << pImage.height << image.byteCount()<< sizeof(__protocolImage);
+//    qDebug() <<"QImage size --> "<<sizeof(__protocolImage) + image.byteCount() << "<" << MPI_BUFFER_SIZE;
 
     int rc = MPI_Send(buffer, sizeof(__protocolImage) + image.byteCount(), MPI_BYTE, 0, 1, MPI_COMM_WORLD);
 //    lockSend.unlock();
