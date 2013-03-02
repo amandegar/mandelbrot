@@ -30,7 +30,8 @@ void listenMPI::run()
         {
             qDebug() <<"IMAGE from" << source;
             __protocolImage *pImage = (__protocolImage *)buffer;
-            QImage tImage(buffer + sizeof(__protocolImage), pImage->width, pImage->height, QImage::Format_RGB32);
+            QImage teImage(buffer + sizeof(__protocolImage), pImage->width, pImage->height, QImage::Format_RGB32);
+            QImage tImage = teImage.copy();
             emit renderedImage(tImage, pImage->scaleFactor, source);
             break;
         }
